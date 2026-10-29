@@ -79,7 +79,8 @@ export class ProcessWagerTransactionUseCase {
       referenceExternalTransactionId: input.referenceExternalTransactionId ?? null,
     });
 
-    return this.em.transactional(async (txEm) => {
+    try {
+      return await this.em.transactional(async (txEm) => {
       // 2. Tratamento de Inbox (quando originado por fila SQS)
       let inboxMessage: InboxMessage | undefined;
       if (input.messageId && input.consumerName) {
@@ -604,6 +605,48 @@ export class ProcessWagerTransactionUseCase {
         failureCode: wagerTx.failureCode,
       };
     });
+    } catch (err: any) {
+      if (
+        err?.code === "23505" ||
+        err?.name === "UniqueConstraintViolationException" ||
+        err?.message?.includes("uq_wager_")
+      ) {
+        // Race condition: outra transação concorrente no mesmo milissegundo comitou primeiro.
+        // Recupera o resultado idempotente comitado:
+        const checkEm = this.em.fork();
+        const committedTx = await checkEm.findOne(
+          WagerTransactionOrmEntity,
+          {
+            $or: [
+              { idempotencyKey: input.idempotencyKey },
+              {
+                providerId: input.providerId,
+                externalTransactionId: input.externalTransactionId,
+              },
+            ],
+          },
+          { populate: ["wallet"] },
+        );
+
+        if (committedTx) {
+          if (committedTx.payloadHash !== payloadHash) {
+            throw new IdempotencyConflictError(input.idempotencyKey);
+          }
+
+          return {
+            transactionId: committedTx.id,
+            status: committedTx.status as WagerTransactionStatus,
+            balance: {
+              amount: committedTx.wallet.balance,
+              currency: committedTx.wallet.currency,
+            },
+            idempotentReplay: true,
+            failureCode: committedTx.failureCode as FailureCode | undefined,
+          };
+        }
+      }
+      throw err;
+    }
   }
 
   private updateWalletOrm(orm: WalletOrmEntity, domain: any): void {
