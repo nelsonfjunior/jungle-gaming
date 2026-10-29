@@ -1,0 +1,47 @@
+{
+  "name": "distributed-wagering-processor",
+  "version": "1.0.0",
+  "description": "Distributed Wagering Processor for Jungle Gaming Technical Challenge",
+  "private": true,
+  "scripts": {
+    "build": "nest build",
+    "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
+    "start": "nest start",
+    "start:dev": "nest start --watch",
+    "start:prod": "node dist/main",
+    "test": "bun test src/",
+    "test:unit": "bun test src/domain",
+    "test:integration": "bun test test/integration",
+    "test:concurrency": "bun test test/concurrency",
+    "test:load": "bun run test/load/run.ts",
+    "mikro-orm": "mikro-orm"
+  },
+  "dependencies": {
+    "@aws-sdk/client-sqs": "^3.750.0",
+    "@mikro-orm/cli": "^6.4.3",
+    "@mikro-orm/core": "^6.4.3",
+    "@mikro-orm/migrations": "^6.4.3",
+    "@mikro-orm/nestjs": "^6.1.1",
+    "@mikro-orm/postgresql": "^6.4.3",
+    "@nestjs/common": "^11.0.0",
+    "@nestjs/core": "^11.0.0",
+    "@nestjs/platform-express": "^11.0.0",
+    "@nestjs/terminus": "^11.0.0",
+    "class-transformer": "^0.5.1",
+    "class-validator": "^0.14.1",
+    "decimal.js": "^10.5.0",
+    "dotenv": "^16.4.7",
+    "reflect-metadata": "^0.2.2",
+    "rxjs": "^7.8.1",
+    "uuid": "^11.1.0"
+  },
+  "devDependencies": {
+    "@nestjs/cli": "^11.0.0",
+    "@nestjs/schematics": "^11.0.0",
+    "@types/express": "^5.0.0",
+    "@types/node": "^22.13.0",
+    "@types/uuid": "^10.0.0",
+    "typescript": "^5.7.3"
+  }
+}
+
