@@ -139,17 +139,24 @@ export class ProcessWagerTransactionUseCase {
           throw new IdempotencyConflictError(input.idempotencyKey);
         }
 
-        // Se o payload for idêntico: REPLAY IDEMPOTENTE!
-        return {
-          transactionId: existingTxOrm.id,
-          status: existingTxOrm.status as WagerTransactionStatus,
-          balance: {
-            amount: existingTxOrm.wallet.balance,
-            currency: existingTxOrm.wallet.currency,
-          },
-          idempotentReplay: true,
-          failureCode: existingTxOrm.failureCode as FailureCode | undefined,
-        };
+        // Se o status for TERMINAL (PROCESSED, REJECTED, FAILED): REPLAY IDEMPOTENTE!
+        if (
+          existingTxOrm.status === WagerTransactionStatus.Processed ||
+          existingTxOrm.status === WagerTransactionStatus.Rejected ||
+          existingTxOrm.status === WagerTransactionStatus.Failed
+        ) {
+          return {
+            transactionId: existingTxOrm.id,
+            status: existingTxOrm.status as WagerTransactionStatus,
+            balance: {
+              amount: existingTxOrm.wallet.balance,
+              currency: existingTxOrm.wallet.currency,
+            },
+            idempotentReplay: true,
+            failureCode: existingTxOrm.failureCode as FailureCode | undefined,
+          };
+        }
+        // Se for PENDING_REFERENCE, continua a execução para tentar processar agora que a referência pode ter chegado!
       }
 
       // 4. Pessimistic Lock na Wallet (SELECT ... FOR UPDATE)
@@ -165,8 +172,8 @@ export class ProcessWagerTransactionUseCase {
 
       const wallet = WalletMapper.toDomain(walletOrm);
 
-      // 5. Criação da WagerTransaction no Domínio
-      const transactionId = uuidv4();
+      // 5. Criação ou Reutilização da WagerTransaction no Domínio
+      const transactionId = existingTxOrm ? existingTxOrm.id : uuidv4();
       const now = new Date();
 
       if (input.kind === WagerTransactionKind.Opening) {
@@ -255,7 +262,7 @@ export class ProcessWagerTransactionUseCase {
           wagerTx.markProcessed(undefined, now);
 
           this.updateWalletOrm(walletOrm, wallet);
-          txEm.persist(WagerTransactionMapper.toOrm(wagerTx, walletOrm));
+          this.saveOrUpdateWagerTx(txEm, wagerTx, walletOrm, existingTxOrm);
           txEm.persist(WalletLedgerEntryMapper.toOrm(debitResult.ledgerEntry, walletOrm));
 
           this.enqueueBalanceAndProcessedEvents(
@@ -292,7 +299,7 @@ export class ProcessWagerTransactionUseCase {
           wagerTx.markProcessed(refTxOrm?.id, now);
 
           this.updateWalletOrm(walletOrm, wallet);
-          txEm.persist(WagerTransactionMapper.toOrm(wagerTx, walletOrm));
+          this.saveOrUpdateWagerTx(txEm, wagerTx, walletOrm, existingTxOrm);
           txEm.persist(WalletLedgerEntryMapper.toOrm(creditResult.ledgerEntry, walletOrm));
 
           this.enqueueBalanceAndProcessedEvents(
@@ -307,7 +314,7 @@ export class ProcessWagerTransactionUseCase {
 
         case WagerTransactionKind.Loss: {
           wagerTx.markProcessed(undefined, now);
-          txEm.persist(WagerTransactionMapper.toOrm(wagerTx, walletOrm));
+          this.saveOrUpdateWagerTx(txEm, wagerTx, walletOrm, existingTxOrm);
 
           const event = WagerTransactionProcessed.create({
             eventId: uuidv4(),
@@ -339,7 +346,7 @@ export class ProcessWagerTransactionUseCase {
           // Se a referência ainda não chegou: marca como PENDING_REFERENCE
           if (!refTxOrm) {
             wagerTx.markPendingReference();
-            txEm.persist(WagerTransactionMapper.toOrm(wagerTx, walletOrm));
+            this.saveOrUpdateWagerTx(txEm, wagerTx, walletOrm, existingTxOrm);
 
             const pendingEvent = WagerTransactionPendingReference.create({
               eventId: uuidv4(),
@@ -430,7 +437,7 @@ export class ProcessWagerTransactionUseCase {
           wagerTx.markProcessed(refTxOrm.id, now);
 
           this.updateWalletOrm(walletOrm, wallet);
-          txEm.persist(WagerTransactionMapper.toOrm(wagerTx, walletOrm));
+          this.saveOrUpdateWagerTx(txEm, wagerTx, walletOrm, existingTxOrm);
           txEm.persist(WalletLedgerEntryMapper.toOrm(creditResult.ledgerEntry, walletOrm));
 
           this.enqueueBalanceAndProcessedEvents(
@@ -452,7 +459,7 @@ export class ProcessWagerTransactionUseCase {
 
           if (!refTxOrm) {
             wagerTx.markPendingReference();
-            txEm.persist(WagerTransactionMapper.toOrm(wagerTx, walletOrm));
+            this.saveOrUpdateWagerTx(txEm, wagerTx, walletOrm, existingTxOrm);
 
             const pendingEvent = WagerTransactionPendingReference.create({
               eventId: uuidv4(),
@@ -538,7 +545,7 @@ export class ProcessWagerTransactionUseCase {
             wagerTx.markProcessed(refTxOrm.id, now);
 
             this.updateWalletOrm(walletOrm, wallet);
-            txEm.persist(WagerTransactionMapper.toOrm(wagerTx, walletOrm));
+            this.saveOrUpdateWagerTx(txEm, wagerTx, walletOrm, existingTxOrm);
             txEm.persist(WalletLedgerEntryMapper.toOrm(creditResult.ledgerEntry, walletOrm));
 
             this.enqueueBalanceAndProcessedEvents(
@@ -605,6 +612,22 @@ export class ProcessWagerTransactionUseCase {
     orm.updatedAt = domain.updatedAt;
   }
 
+  private saveOrUpdateWagerTx(
+    txEm: EntityManager,
+    domain: WagerTransaction,
+    walletOrm: WalletOrmEntity,
+    existingOrm?: WagerTransactionOrmEntity | null,
+  ): void {
+    if (existingOrm) {
+      existingOrm.status = domain.status;
+      existingOrm.referenceTransactionId = domain.referenceTransactionId;
+      existingOrm.failureCode = domain.failureCode;
+      existingOrm.processedAt = domain.processedAt;
+    } else {
+      txEm.persist(WagerTransactionMapper.toOrm(domain, walletOrm));
+    }
+  }
+
   private async rejectTransaction(
     txEm: EntityManager,
     walletOrm: WalletOrmEntity,
@@ -612,9 +635,10 @@ export class ProcessWagerTransactionUseCase {
     wagerTx: WagerTransaction,
     failureCode: FailureCode,
     correlationId: string,
+    existingTxOrm?: WagerTransactionOrmEntity | null,
   ): Promise<ProcessWagerTransactionOutput> {
     wagerTx.reject(failureCode);
-    txEm.persist(WagerTransactionMapper.toOrm(wagerTx, walletOrm));
+    this.saveOrUpdateWagerTx(txEm, wagerTx, walletOrm, existingTxOrm);
 
     const event = WagerTransactionRejected.create({
       eventId: uuidv4(),
