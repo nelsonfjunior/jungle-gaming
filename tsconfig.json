@@ -13,7 +13,7 @@
     "incremental": true,
     "skipLibCheck": true,
     "strict": true,
-    "types": ["bun"],
+    "types": ["bun", "node"],
     "strictNullChecks": true,
     "noImplicitAny": true,
     "strictBindCallApply": true,
@@ -26,6 +26,6 @@
       "@interfaces/*": ["src/interfaces/*"]
     }
   },
-  "include": ["src/**/*", "test/**/*"]
+  "include": ["src/**/*", "test/**/*", "mikro-orm.config.ts"]
 }
 
