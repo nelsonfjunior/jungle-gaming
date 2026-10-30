@@ -155,3 +155,4 @@ Retorna auditoria comparando o saldo materializado com a soma histórica de cré
 Para detalhes aprofundados sobre **Domain-Driven Design**, **escolha do MikroORM**, **estratégia de locks pessimistas**, **hashing canônico SHA-256**, **Transactional Outbox** e **integração com IdP externo (Keycloak/Zitadel)**, consulte o documento:
 
 👉 **[ARCHITECTURE.md](./ARCHITECTURE.md)**
+

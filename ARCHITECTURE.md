@@ -38,7 +38,7 @@ O sistema foi desenhado sob os princípios de **Domain-Driven Design (DDD)**, **
 
 ## 2. Escolha e Justificativa do ORM: MikroORM
 
-Conforme preferência expressa do edital, adotamos o **MikroORM** em detrimento do TypeORM ou Prisma pelos seguintes motivos:
+Conforme preferência expressa do edital, foi adotado o **MikroORM** em detrimento do TypeORM ou Prisma pelos seguintes motivos:
 
 1. **Unit of Work & Identity Map:**
    - O MikroORM mantém um Identity Map explícito por transação/request (`Forked EntityManager`), garantindo que a mesma entidade recuperada múltiplas vezes no mesmo escopo aponte para a mesma referência em memória.
